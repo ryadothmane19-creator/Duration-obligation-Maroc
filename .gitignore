@@ -1,0 +1,17 @@
+# Données : on ne publie que les 2 fichiers lus par l'application
+data/*
+!data/resultats.csv
+!data/courbe_bam.csv
+
+# Python / Jupyter
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.venv/
+venv/
+
+# Fichiers créés par Windows
+*Zone.Identifier
+
+# Archives
+*.zip
