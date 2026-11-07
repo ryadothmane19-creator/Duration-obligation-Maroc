@@ -1,4 +1,5 @@
 # Risque de taux et de spread des obligations privées marocaines
+**Application en ligne : [duration-maroc.streamlit.app](https://duration-maroc.streamlit.app/)**
 
 Outil Python qui collecte automatiquement les **emprunts obligataires d'entreprises visés par l'AMMC**, les valorise sur la **courbe des taux de Bank Al-Maghrib**, et mesure leur risque : duration, convexité, key rate durations, duration de spread, stress tests de déformation de courbe.
 
