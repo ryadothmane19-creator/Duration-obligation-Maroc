@@ -91,7 +91,8 @@ def page_synthese():
     longue["mesure"] = longue["mesure"].map({"duration_taux_moy": "Duration de taux",
                                              "duration_spread_moy": "Duration de spread"})
     ordre = halteres.sort_values("duration_spread_moy", ascending=False)["secteur"].tolist()
-    y = alt.Y("secteur:N", sort=ordre, title=None, axis=alt.Axis(labelFontSize=13, labelColor=ENCRE, labelPadding=12))
+    y = alt.Y("secteur:N", sort=ordre, title=None,
+              axis=alt.Axis(labelFontSize=13, labelColor=ENCRE, labelPadding=12, labelLimit=260))
     barre = alt.Chart(halteres).mark_rule(strokeWidth=3, color=LIGNE).encode(
         y=y, x=alt.X("duration_taux_moy:Q", title="Duration (perte en % pour +1 %)"), x2="duration_spread_moy:Q")
     points = alt.Chart(longue).mark_circle(size=230, opacity=1, stroke=PANNEAU, strokeWidth=2).encode(
@@ -178,9 +179,21 @@ def vue_rendement_risque(df):
                  alt.Tooltip("prime:Q", title="Prime moyenne (pb)", format=".0f"),
                  alt.Tooltip("revisables:Q", title="Révisables (%)", format=".0f")],
     ).add_params(choix)
-    noms = alt.Chart(bulles).mark_text(align="left", dx=42, fontSize=13, fontWeight=700).encode(
-        x=x, y=y, text="secteur:N",
-        color=alt.condition(choix, alt.value(ENCRE), alt.value(DISCRET)))
+    # Étiquette à droite de la bulle, sauf si une autre bulle est juste à droite : alors à gauche
+    dx_tot = (bulles["duration"].max() - bulles["duration"].min()) or 1
+    dy_tot = (bulles["rendement"].max() - bulles["rendement"].min()) or 1
+    def cote(ligne):
+        voisins = bulles[(bulles["duration"] > ligne["duration"])
+                         & ((bulles["duration"] - ligne["duration"]) < 0.35 * dx_tot)
+                         & ((bulles["rendement"] - ligne["rendement"]).abs() < 0.15 * dy_tot)]
+        return "gauche" if len(voisins) else "droite"
+    bulles["cote"] = bulles.apply(cote, axis=1)
+    couleur_nom = alt.condition(choix, alt.value(ENCRE), alt.value(DISCRET))
+    noms_d = alt.Chart(bulles).transform_filter(alt.datum.cote == "droite").mark_text(
+        align="left", dx=42, fontSize=13, fontWeight=700).encode(x=x, y=y, text="secteur:N", color=couleur_nom)
+    noms_g = alt.Chart(bulles).transform_filter(alt.datum.cote == "gauche").mark_text(
+        align="right", dx=-42, fontSize=13, fontWeight=700).encode(x=x, y=y, text="secteur:N", color=couleur_nom)
+    noms = noms_d + noms_g
     graphique = (cercles + noms).properties(height=420)
 
     clic = None
