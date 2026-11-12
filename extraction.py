@@ -131,10 +131,27 @@ def extraire_remboursement(lignes):
     for i, l in enumerate(lignes):
         if "remboursement" in l.lower() and len(l) < 90:
             zone = " ".join(lignes[max(i - 2, 0):i + 3]).lower()
-            trouves = re.findall(r"in fine|amortissable|échéances constantes", zone)
+            trouves = re.findall(r"in fine|amortissable|échéances constantes|amortissement (?:annuel )?lin[ée]aire", zone)
             if trouves:
                 return ["in fine" if x == "in fine" else "amortissable" for x in trouves]
     return []
+
+
+NOMBRES = {"un": 1, "une": 1, "deux": 2, "trois": 3, "quatre": 4, "cinq": 5, "six": 6, "sept": 7,
+           "huit": 8, "neuf": 9, "dix": 10}
+
+
+def extraire_differe(texte):
+    """Durée du différé d'amortissement, en années (0 si aucun).
+    Reconnaît « 5 ans de différé », « Deux ans de différé d'amortissement », « différé de 3 ans »."""
+    t = texte.lower()
+    mot = r"(\d+|" + "|".join(NOMBRES) + r")"
+    for motif in [mot + r"\s+ans?\s+de\s+diff[ée]r[ée]", r"diff[ée]r[ée]\s+(?:d.amortissement\s+)?de\s+" + mot + r"\s+ans?"]:
+        m = re.search(motif, t)
+        if m:
+            v = m.group(1)
+            return int(v) if v.isdigit() else NOMBRES[v]
+    return 0
 
 
 # ---------- Assemblage : une ligne par tranche ----------
@@ -147,6 +164,7 @@ def analyser_note(url):
     maturites = extraire_maturites(premiere_ligne(lignes, "Maturité")[0])
     natures = extraire_nature(lignes)
     remboursements = extraire_remboursement(lignes)
+    differe = extraire_differe("\n".join(lignes))
 
     nb_tranches = max(len(primes), len(maturites), len(natures), 1)
     tranches = []
@@ -167,5 +185,6 @@ def analyser_note(url):
             "nature_taux": element(natures, i),
             "prime_pb": element(primes, i),
             "remboursement": element(remboursements, i),
+            "differe_ans": differe if element(remboursements, i) == "amortissable" else 0,
         })
     return tranches

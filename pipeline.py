@@ -115,16 +115,21 @@ def analyser_marche(vivantes, courbe, aujourd_hui=None, chocs_pb=(-100, 50, 100,
         maturite_ref = 1.0 if o["nature_taux"] == "révisable" else mat_res
         coupon = taux_courbe(maturite_ref, courbe) + prime
 
+        differe, mat_ans = o.get("differe_ans", 0) or 0, o.get("maturite_ans")
         flux, times, couru = flux_dates(coupon, o["echeance"], aujourd_hui, o["remboursement"],
-                                        o["nature_taux"], jouissance=o.get("jouissance"))
+                                        o["nature_taux"], jouissance=o.get("jouissance"),
+                                        differe_ans=differe, maturite_ans=mat_ans)
         prix, mac, dur, conv = mesures_courbe(flux, times, courbe, prime)
         fc, tc, _ = flux_dates(coupon, o["echeance"], aujourd_hui, o["remboursement"],
-                               o["nature_taux"], projection_complete=True)
+                               o["nature_taux"], projection_complete=True,
+                               differe_ans=differe, maturite_ans=mat_ans)
 
         ligne = {
             "emetteur": o["emetteur"], "tranche": o["tranche"], "type": o["type"],
             "secteur": o["secteur"], "nature_taux": o["nature_taux"],
             "remboursement": o["remboursement"], "echeance": pd.Timestamp(o["echeance"]).date(),
+            "differe_ans": int(differe) if not pd.isna(differe) else 0,
+            "maturite_ans": mat_ans,
             "echeance_estimee": bool(o.get("echeance_estimee", False)),
             "maturite_res": round(mat_res, 2), "prochain_flux_ans": round(times[0], 2),
             "taux_bam_%": round(taux_courbe(mat_res, courbe) * 100, 3), "prime_pb": o["prime_pb"],
@@ -170,9 +175,12 @@ def impact_scenario(resultats, courbe, chocs_pb=None, spreads_pb=None, aujourd_h
     spreads_pb = spreads_pb or {}
     lignes = []
     for _, o in resultats.iterrows():
+        differe = o.get("differe_ans", 0)
         v_c, v_s, v_t = variation_tranche(o["coupon_%"] / 100, o["echeance"], aujourd_hui,
                                           o["remboursement"], o["nature_taux"], o["prime_pb"] / 10000,
-                                          courbe, chocs_pb, spreads_pb.get(o["secteur"], 0.0))
+                                          courbe, chocs_pb, spreads_pb.get(o["secteur"], 0.0),
+                                          differe_ans=0 if pd.isna(differe) else differe,
+                                          maturite_ans=o.get("maturite_ans"))
         lignes.append({"emetteur": o["emetteur"], "tranche": o["tranche"], "secteur": o["secteur"],
                        "nature_taux": o["nature_taux"], "maturite_res": o["maturite_res"],
                        "effet_courbe_%": round(v_c, 3), "effet_spread_%": round(v_s, 3),

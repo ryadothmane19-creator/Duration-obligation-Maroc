@@ -1,5 +1,4 @@
 # Risque de taux et de spread des obligations privées marocaines
-**Application en ligne : [duration-maroc.streamlit.app](https://duration-maroc.streamlit.app/)**
 
 Outil Python qui collecte automatiquement les **emprunts obligataires d'entreprises visés par l'AMMC**, les valorise sur la **courbe des taux de Bank Al-Maghrib**, et mesure leur risque : duration, convexité, key rate durations, duration de spread, stress tests de déformation de courbe.
 
@@ -43,7 +42,8 @@ calculs.py           Flux, prix, durations, convexité, courbe, KRD, scénarios,
 pipeline.py          Tranches -> obligations vivantes -> analyse -> scénarios
 rapport.py           Exports Excel (un onglet par analyse) et rapport HTML
 
-data/                Caches (CSV, PDF) et exports — non versionnés
+outils/reveil_app.py Réveil automatique de l'application en ligne (lancé par GitHub Actions)
+data/                Caches (CSV, PDF) et exports ; seuls resultats.csv et courbe_bam.csv sont publiés
 ```
 
 ## Installation et utilisation
@@ -68,6 +68,7 @@ streamlit run app.py --server.headless true   # puis http://localhost:8501
 - Tranche fixe : coupon ≈ taux BDT à la maturité résiduelle + prime (le taux facial réel n'est pas extrait).
 - Tranche révisable : coupon = BDT 1 an + prime, exposée aux taux jusqu'à sa prochaine révision (anniversaire de l'échéance).
 - Coupons annuels aux dates anniversaires de l'échéance ; premier coupon « long » non modélisé.
+- Amortissement linéaire, avec différé d'amortissement lu dans la note (par exemple « 5 ans de différé ») ; la capitalisation des intérêts pendant un différé n'est pas modélisée (aucun différé de ce type encore en cours).
 - La courbe BAM est une courbe de taux actuariels : utilisée telle quelle, sans bootstrapping en taux zéro-coupon.
 - Échéance absente du PDF : date de visa AMMC + maturité.
 - Moyennes simples par tranche, non pondérées par les montants émis.

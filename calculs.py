@@ -121,11 +121,13 @@ def dates_coupons(echeance, aujourd_hui):
 
 
 def flux_dates(coupon_rate, echeance, aujourd_hui, remboursement="in fine", nature_taux="fixe",
-               nominal=100, jouissance=None, projection_complete=False):
+               nominal=100, jouissance=None, projection_complete=False, differe_ans=0, maturite_ans=None):
     """Flux futurs (pour 100 de capital restant), leurs temps en années, et le coupon couru.
 
     - fixe in fine      : coupons + nominal à l'échéance
     - fixe amortissable : capital remboursé par parts égales sur les échéances restantes
+    - différé d'amortissement (differe_ans, maturite_ans) : le capital n'est remboursé que sur les
+                          (maturite_ans - differe_ans) dernières échéances ; avant, coupons seuls
     - révisable         : par défaut, un seul flux à la prochaine révision (coupon + capital),
                           car le coupon suivant s'ajuste aux taux. Avec projection_complete=True,
                           on garde tout l'échéancier (utile pour le risque de SPREAD, qui ne se révise pas).
@@ -143,12 +145,17 @@ def flux_dates(coupon_rate, echeance, aujourd_hui, remboursement="in fine", natu
         return [nominal + coupon], [times[0]], couru
 
     if remboursement == "amortissable":
-        part = nominal / len(dates)
+        nb_amort = len(dates)                       # par défaut : chaque échéance restante amortit
+        if differe_ans and maturite_ans and not pd.isna(maturite_ans) and not pd.isna(differe_ans):
+            nb_amort = max(1, min(len(dates), int(maturite_ans) - int(differe_ans)))
+        part = nominal / nb_amort
         restant = nominal
         flux = []
-        for _ in dates:
-            flux.append(restant * coupon_rate + part)
-            restant -= part
+        for k in range(len(dates)):
+            amortit = k >= len(dates) - nb_amort      # seules les dernières échéances remboursent
+            flux.append(restant * coupon_rate + (part if amortit else 0))
+            if amortit:
+                restant -= part
     else:
         flux = [coupon] * len(dates)
         flux[-1] += nominal
@@ -233,7 +240,7 @@ def key_rate_durations(flux, times, courbe, prime, points=POINTS_COURBE):
 
 
 def variation_tranche(coupon_rate, echeance, aujourd_hui, remboursement, nature_taux, prime, courbe,
-                      chocs_pb=None, spread_pb=0.0):
+                      chocs_pb=None, spread_pb=0.0, differe_ans=0, maturite_ans=None):
     """Variation du prix plein (%) d'une tranche sous un choc de courbe ET/OU un choc de spread.
 
     - Choc de courbe : la tranche révisable n'y est exposée que jusqu'à sa prochaine révision.
@@ -245,13 +252,14 @@ def variation_tranche(coupon_rate, echeance, aujourd_hui, remboursement, nature_
     ds = spread_pb / 10000
 
     # 1) Effet de la courbe
-    flux, times, _ = flux_dates(coupon_rate, echeance, aujourd_hui, remboursement, nature_taux)
+    flux, times, _ = flux_dates(coupon_rate, echeance, aujourd_hui, remboursement, nature_taux,
+                                differe_ans=differe_ans, maturite_ans=maturite_ans)
     p0 = prix_courbe(flux, times, courbe, prime)
     v_courbe = (prix_courbe(flux, times, courbe, prime, choc=choc) / p0 - 1) * 100 if choc else 0.0
 
     # 2) Effet du spread (échéancier complet, y compris pour les révisables)
     fc, tc, _ = flux_dates(coupon_rate, echeance, aujourd_hui, remboursement, nature_taux,
-                           projection_complete=True)
+                           projection_complete=True, differe_ans=differe_ans, maturite_ans=maturite_ans)
     q0 = prix_courbe(fc, tc, courbe, prime)
     v_spread = (prix_courbe(fc, tc, courbe, prime + ds) / q0 - 1) * 100 if ds else 0.0
 

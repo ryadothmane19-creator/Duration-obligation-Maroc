@@ -1,0 +1,20 @@
+name: Garder l'application éveillée
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"     # toutes les 6 heures (heure UTC)
+  workflow_dispatch:            # bouton « Run workflow » pour le lancer à la main
+
+jobs:
+  reveil:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install selenium
+      - run: python outils/reveil_app.py
+        env:
+          APP_URL: https://duration-maroc.streamlit.app/
