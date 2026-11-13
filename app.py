@@ -328,23 +328,34 @@ def page_scenarios():
         return
     from pipeline import impact_scenario
 
-    reglages, visuel = st.columns([1, 2], gap="large")
+    def editeur(df, **options):
+        """Tableau modifiable sur toute la largeur de sa colonne."""
+        try:
+            return st.data_editor(df, width="stretch", **options)
+        except TypeError:
+            return st.data_editor(df, use_container_width=True, **options)
+
+    # Colonne de réglages plus large : on lit le nom complet du scénario et la colonne « Choc (pb) »
+    reglages, visuel = st.columns([1.25, 1.75], gap="large")
     with reglages:
         nom = st.selectbox("Scénario de courbe", ["Aucun choc de courbe"] + list(SCENARIOS.keys()), index=7)
         base_chocs = SCENARIOS.get(nom, [0] * len(POINTS_COURBE))
         st.caption("Chocs de taux en points de base, modifiables")
         t = pd.DataFrame({"Maturité (ans)": POINTS_COURBE, "Choc (pb)": base_chocs})
-        t = st.data_editor(t, disabled=["Maturité (ans)"], hide_index=True, key=f"choc_{nom}")
+        t = editeur(t, disabled=["Maturité (ans)"], hide_index=True, key=f"choc_{nom}",
+                    column_config={"Maturité (ans)": st.column_config.NumberColumn(format="%g"),
+                                   "Choc (pb)": st.column_config.NumberColumn(format="%d")})
         chocs = t["Choc (pb)"].fillna(0).tolist()
 
         st.caption("Choc de prime par secteur, en points de base")
         presents = [s for s in SECTEURS_ORDRE if s in set(resultats["secteur"])]
         s = pd.DataFrame({"Secteur": presents, "Choc (pb)": [0.0] * len(presents)})
-        s = st.data_editor(s, disabled=["Secteur"], hide_index=True, key="spreads",
-                           column_config={"Choc (pb)": st.column_config.NumberColumn(format="%d", width="small")})
+        s = editeur(s, disabled=["Secteur"], hide_index=True, key="spreads",
+                    column_config={"Choc (pb)": st.column_config.NumberColumn(format="%d")})
         spreads_pb = dict(zip(s["Secteur"], s["Choc (pb)"].fillna(0)))
 
     with visuel:
+        section("La courbe avant et après le choc", "Pointillés : courbe actuelle de Bank Al-Maghrib. Trait plein : après le choc.")
         choc_t = fonction_choc(chocs)
         grille = [m / 4 for m in range(1, 121)]
         c = pd.DataFrame({"maturité": grille,
@@ -360,7 +371,9 @@ def page_scenarios():
                 domain=["Courbe actuelle", "Après le choc"], range=[[5, 4], [1, 0]])),
             tooltip=[alt.Tooltip("maturité:Q", title="Maturité"), "Courbe",
                      alt.Tooltip("taux:Q", format=".3f", title="Taux (%)")])
-        afficher(graph.properties(height=330, title="Courbe des taux BDT avant et après le choc"))
+        zone = alt.Chart(c).mark_area(opacity=0.12, color=PRINCIPAL, interpolate="monotone").encode(
+            x="maturité:Q", y=alt.Y("Courbe actuelle:Q", scale=alt.Scale(zero=False)), y2="Après le choc:Q")
+        afficher((zone + graph).properties(height=360))
 
     impact = impact_scenario(resultats, courbe, chocs, spreads_pb)
     moy = impact["variation_%"].mean()
@@ -375,17 +388,26 @@ def page_scenarios():
 
     onglets = st.tabs(["Impact par secteur", "Tranches", "Exposition par maturité"])
     with onglets[0]:
+        # Barres groupées (fixe / révisable) par secteur, sur toute la largeur : plus de largeur fixe qui déborde
         moyennes = impact.groupby(["secteur", "nature_taux"])["variation_%"].mean().reset_index()
-        barres = alt.Chart(moyennes).mark_bar(cornerRadius=3, height=16).encode(
-            y=alt.Y("nature_taux:N", title=None, axis=alt.Axis(labelColor=GRIS)),
+        y = alt.Y("secteur:N", title=None, sort=SECTEURS_ORDRE,
+                  axis=alt.Axis(labelColor=ENCRE, labelFontSize=13, labelFontWeight=600, labelPadding=12, labelLimit=260))
+        barres = alt.Chart(moyennes).mark_bar(cornerRadiusEnd=4, height=14).encode(
+            y=y, yOffset=alt.YOffset("nature_taux:N", sort=["fixe", "révisable"]),
             x=alt.X("variation_%:Q", title="Variation moyenne du prix (%)"),
-            color=alt.condition(alt.datum["variation_%"] < 0, alt.value(PERTE), alt.value(GAIN)),
-            row=alt.Row("secteur:N", title=None, sort=SECTEURS_ORDRE,
-                        header=alt.Header(labelAngle=0, labelAlign="left", labelColor=ENCRE,
-                                          labelFontSize=13, labelFontWeight=600)),
-            tooltip=["secteur", "nature_taux", alt.Tooltip("variation_%:Q", format=".2f")],
-        ).properties(height=48, width=560)
-        afficher(barres)
+            color=alt.Color("nature_taux:N", title=None,
+                            scale=alt.Scale(domain=["fixe", "révisable"], range=[PRINCIPAL, "#2B6E99"])),
+            tooltip=["secteur", "nature_taux", alt.Tooltip("variation_%:Q", format=".2f")])
+        def etiquettes(negatif):
+            filtre = alt.datum["variation_%"] < 0 if negatif else alt.datum["variation_%"] >= 0
+            return alt.Chart(moyennes).transform_filter(filtre).mark_text(
+                fontSize=11, fontWeight=600, dx=-6 if negatif else 6, align="right" if negatif else "left",
+                color=PERTE if negatif else GAIN).encode(
+                y=y, yOffset=alt.YOffset("nature_taux:N", sort=["fixe", "révisable"]), x="variation_%:Q",
+                text=alt.Text("variation_%:Q", format=".2f"))
+        afficher((barres + etiquettes(True) + etiquettes(False)).properties(height=340))
+        st.caption("Bleu vif : tranches à taux fixe. Bleu foncé : tranches révisables. "
+                   "Chiffre rouge = perte, vert = gain.")
 
     with onglets[1]:
         colonnes = ["emetteur", "tranche", "secteur", "nature_taux", "maturite_res",
